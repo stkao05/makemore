@@ -199,13 +199,16 @@ def estimate_loss(model, tr_ds, va_ds, batch_size):
     return losses
 
 
-def fit(model, tr_ds, va_ds, epoch, batch_size, eval_size):
+def fit(model, tr_ds, va_ds, epoch, batch_size, eval_interval, eval_size):
     model.train()
     optim = torch.optim.Adam(model.parameters())
     tr_dl = DataLoader(tr_ds, batch_size)
     lossi = []
 
-    for i in range(epoch):
+    i = 0
+    steps = epoch * len(tr_dl)
+
+    for _ in range(epoch):
         for xb, yb in tr_dl:
             optim.zero_grad()
             logits = model(xb)  # (B, L, C)
@@ -215,9 +218,11 @@ def fit(model, tr_ds, va_ds, epoch, batch_size, eval_size):
             loss.backward()
             optim.step()
 
-        tr_los, va_los = estimate_loss(model, tr_ds, va_ds, eval_size)
-        lossi.append((tr_los, va_los))
-        print(f"{i:5d}/{epoch}: {tr_los:.4f}  {va_los:.4f}")
+            i += 1
+            if i % eval_interval == 0 or i == steps-1:
+                tr_los, va_los = estimate_loss(model, tr_ds, va_ds, eval_size)
+                lossi.append((tr_los, va_los))
+                print(f"{i:5d}/{steps}: {tr_los:.4f}  {va_los:.4f}")
 
 
 def save(model, config, path):
@@ -228,44 +233,46 @@ def save(model, config, path):
 
 
 if __name__ == "__main__":
-    # # model config
-    # block_size = 32
-    # emb_size = 64
-    # head_size = 64
-    # head_num = emb_size // 64
-    # layer_num = 2
+    # model config
+    block_size = 32
+    emb_size = 64
+    head_size = 64
+    head_num = emb_size // 64
+    layer_num = 2
 
-    # # training config
-    # epoch = 1
-    # eval_size = 500
-    # batch_size = 32
+    # training config
+    epoch = 1
+    eval_interval = 500
+    eval_size = 500
+    batch_size = 32
 
-    # raw, ctoi, itoc, vocab_size = load_txt("shakespeare.txt")
-    # dataset = CharDataset(raw, block_size)
-    # tr_ds, va_ds = random_split(dataset, [0.9, 0.1])
+    raw, ctoi, itoc, vocab_size = load_txt("shakespeare.txt")
+    dataset = CharDataset(raw, block_size)
+    tr_ds, va_ds = random_split(dataset, [0.9, 0.1])
 
-    # config = Config(vocab_size, block_size, emb_size,
-    #                 head_num, head_size, layer_num, ctoi)
-    # model = Transformer(config)
-    # model = model.to(device)
-    # count = sum([p.numel() for p in model.parameters()])
-    # print(f"total parameter: {count}")
-    # print(f"device: {device}")
-
-    # print("------------")
-    # print(f"fit start")
-    # fit(model, tr_ds, va_ds, epoch, batch_size, eval_size)
-    # save(model, config, "transformer.pt")
-
-    # tr_loss, va_loss = estimate_loss(model, tr_ds, va_ds, 10000)
-    # print(f"train: {tr_loss:.4f}  valid: {va_loss:.4f}")
-
-    # print("------------")
-    # print(model.sample(500))
-
-    state = torch.load("transformer.pt")
-    config = state["config"]
+    config = Config(vocab_size, block_size, emb_size,
+                    head_num, head_size, layer_num, ctoi)
     model = Transformer(config)
-    model.load_state_dict(state["model_state_dict"])
+    model = model.to(device)
+    count = sum([p.numel() for p in model.parameters()])
+    print(f"total parameter: {count}")
+    print(f"device: {device}")
+    print(f"train size: {len(tr_ds)}")
 
+    print("\n----------training----------")
+    fit(model, tr_ds, va_ds, epoch, batch_size, eval_interval, eval_size)
+    save(model, config, "transformer.pt")
+
+    tr_loss, va_loss = estimate_loss(model, tr_ds, va_ds, 10000)
+    print(f"\ntrain: {tr_loss:.4f}  valid: {va_loss:.4f}")
+
+    print("\n----------sample----------")
     print(model.sample(500))
+
+    # -------- loading ------------
+    # state = torch.load("transformer.pt")
+    # config = state["config"]
+    # model = Transformer(config)
+    # model.load_state_dict(state["model_state_dict"])
+
+    # print(model.sample(500))
