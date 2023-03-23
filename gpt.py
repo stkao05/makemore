@@ -5,7 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, random_split, DataLoader
 
-device = torch.device("cpu")
+device = torch.device(
+    "cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
 @dataclass
@@ -159,11 +160,9 @@ def load_txt(path):
 
 
 @torch.no_grad()
-def estimate_loss(model, tr_ds, va_ds, size, batch_size):
+def estimate_loss(model, tr_ds, va_ds, batch_size):
     model.eval()
     losses = []
-
-    n = size // batch_size
 
     for ds in [tr_ds, va_ds]:
         x, y = ds[:batch_size]
@@ -204,7 +203,6 @@ def fit(model, tr_ds, va_ds, epoch, batch_size, eval_size):
     model.train()
     optim = torch.optim.Adam(model.parameters())
     tr_dl = DataLoader(tr_ds, batch_size)
-    va_dl = DataLoader(va_ds, batch_size)
     lossi = []
 
     for i in range(epoch):
@@ -217,28 +215,42 @@ def fit(model, tr_ds, va_ds, epoch, batch_size, eval_size):
             loss.backward()
             optim.step()
 
-        # tr_los, va_los = estimate_loss(model, tr_ds, va_ds, eval_size)
-        # lossi.append((tr_los, va_los))
-        # print(f"{i:5d}/{epoch}: {tr_los:.4f}  {va_los:.4f}")
+        tr_los, va_los = estimate_loss(model, tr_ds, va_ds, eval_size)
+        lossi.append((tr_los, va_los))
+        print(f"{i:5d}/{epoch}: {tr_los:.4f}  {va_los:.4f}")
 
 
 if __name__ == "__main__":
-    print("hi")
+    # model config
+    block_size = 64
+    emb_size = 128
+    head_size = 64
+    head_num = emb_size // 64
+    layer_num = 2
 
-    epoch = 5000
+    # training config
+    epoch = 1
     eval_size = 500
-    block_size = 256
+    batch_size = 64
 
     raw, ctoi, itoc, vocab_size = load_txt("shakespeare.txt")
     dataset = CharDataset(raw, block_size)
     tr_ds, va_ds = random_split(dataset, [0.9, 0.1])
 
-    config = Config(vocab_size, block_size, emb_size=256, head_num=4, head_size=64, layer_num=2)
+    config = Config(vocab_size, block_size, emb_size,
+                    head_num, head_size, layer_num)
     model = Transformer(config)
     model = model.to(device)
     count = sum([p.numel() for p in model.parameters()])
     print(f"total parameter: {count}")
+    print(f"device: {device}")
 
-    # fit(model, tr_ds, va_ds, epoch, eval_size)
-    # tr_loss, va_loss = estimate_loss(model, tr_data, va_data, 10000)
-    # print(f"train: {tr_loss:.4f}  valid: {va_loss:.4f}")
+    print("------------")
+    print(f"start fitting")
+    fit(model, tr_ds, va_ds, epoch, batch_size, eval_size)
+
+    tr_loss, va_loss = estimate_loss(model, tr_ds, va_ds, 10000)
+    print(f"train: {tr_loss:.4f}  valid: {va_loss:.4f}")
+
+    print("------------")
+    print(sample(model, config, itoc))
