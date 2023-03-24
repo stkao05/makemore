@@ -18,6 +18,7 @@ class Config:
     head_size: int
     layer_num: int
     ctoi: dict
+    dropout: float
 
 
 class MultiHeadAttension(nn.Module):
@@ -31,6 +32,9 @@ class MultiHeadAttension(nn.Module):
         self.attn = nn.Linear(
             c.emb_size, 3 * c.head_num * c.head_size, bias=False)
         self.ffn = nn.Linear(c.head_num * c.head_size, c.emb_size, bias=False)
+
+        self.attn_dropout = nn.Dropout(c.dropout)
+        self.resid_dropout = nn.Dropout(c.dropout)
 
     # x: (B, L, C)
     # return: (B, L, C)
@@ -52,27 +56,31 @@ class MultiHeadAttension(nn.Module):
         mask = mask.to(device)
         attn = attn.masked_fill(mask, -float('inf'))  # (B, hn, L, L)
         attn = F.softmax(attn, dim=3)
+        attn = self.attn_dropout(attn)
 
         y = attn @ v  # (B, hn, L, hs)
         y = y.permute(0, 2, 1, 3)  # (B, L, hn, hs)
         y = y.contiguous().view(B, L, -1)  # (B, L, hn * hs)
         y = self.ffn(y)  # (B, L, C)
+        y = self.resid_dropout(y)
 
         return y
 
 
 class FeedForward(nn.Module):
 
-    def __init__(self, emb_size):
+    def __init__(self, c: Config):
         super().__init__()
-        self.linear1 = nn.Linear(emb_size, 2 * emb_size)
-        self.linear2 = nn.Linear(2 * emb_size, emb_size)
+        self.linear1 = nn.Linear(c.emb_size, 2 * c.emb_size)
+        self.linear2 = nn.Linear(2 * c.emb_size, c.emb_size)
+        self.dropout = nn.Dropout(c.dropout)
 
     # (B, L, C)
     def forward(self, x):
         y = self.linear1(x)
         y = torch.relu(y)
         y = self.linear2(y)
+        y = self.dropout(y)
 
         return y
 
@@ -88,7 +96,7 @@ class Block(nn.Module):
         self.mha = MultiHeadAttension(c)
         self.lnorm1 = nn.LayerNorm(c.emb_size)
         self.lnorm2 = nn.LayerNorm(c.emb_size)
-        self.ffn = FeedForward(c.emb_size)
+        self.ffn = FeedForward(c)
 
     # x: (B, L, emb)
     def forward(self, x):
@@ -204,9 +212,8 @@ def fit(model, tr_ds, va_ds, epoch, batch_size, eval_interval, eval_size):
     optim = torch.optim.Adam(model.parameters())
     tr_dl = DataLoader(tr_ds, batch_size)
     lossi = []
-
-    i = 0
     steps = epoch * len(tr_dl)
+    i = 0
 
     for _ in range(epoch):
         for xb, yb in tr_dl:
@@ -239,6 +246,7 @@ if __name__ == "__main__":
     head_size = 64
     head_num = emb_size // 64
     layer_num = 2
+    dropout = 0
 
     # training config
     epoch = 1
@@ -251,7 +259,7 @@ if __name__ == "__main__":
     tr_ds, va_ds = random_split(dataset, [0.9, 0.1])
 
     config = Config(vocab_size, block_size, emb_size,
-                    head_num, head_size, layer_num, ctoi)
+                    head_num, head_size, layer_num, ctoi, dropout)
     model = Transformer(config)
     model = model.to(device)
     count = sum([p.numel() for p in model.parameters()])
@@ -266,7 +274,7 @@ if __name__ == "__main__":
     tr_loss, va_loss = estimate_loss(model, tr_ds, va_ds, 10000)
     print(f"\ntrain: {tr_loss:.4f}  valid: {va_loss:.4f}")
 
-    print("\n----------sample----------")
+    print("\n----------sampling----------")
     print(model.sample(500))
 
     # -------- loading ------------
