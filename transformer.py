@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, random_split, DataLoader
+import wandb
+import random
 
 device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -229,6 +231,8 @@ def fit(model, tr_ds, va_ds, epoch, batch_size, eval_interval, eval_size):
             if i % eval_interval == 0 or i == steps-1:
                 tr_los, va_los = estimate_loss(model, tr_ds, va_ds, eval_size)
                 lossi.append((tr_los, va_los))
+                wandb.log({"tr_los": tr_los})
+                wandb.log({"va_los": va_los})
                 print(f"{i:5d}/{steps}: {tr_los:.4f}  {va_los:.4f}")
 
 
@@ -263,16 +267,30 @@ if __name__ == "__main__":
     model = Transformer(config)
     model = model.to(device)
     count = sum([p.numel() for p in model.parameters()])
+
     print(f"total parameter: {count}")
     print(f"device: {device}")
     print(f"train size: {len(tr_ds)}")
 
+    wandb.init(project="transformer", config=dict(
+        block_size=block_size,
+        emb_size=emb_size,
+        head_size=head_size,
+        head_num=emb_size,
+        layer_num=layer_num,
+        dropout=dropout,
+        epoch=epoch,
+        eval_interval=eval_interval,
+        eval_size=eval_size,
+        batch_size=batch_size,
+    ))
+    wandb.watch(model)
+
     print("\n----------training----------")
+
     fit(model, tr_ds, va_ds, epoch, batch_size, eval_interval, eval_size)
     save(model, config, "transformer.pt")
-
-    tr_loss, va_loss = estimate_loss(model, tr_ds, va_ds, 10000)
-    print(f"\ntrain: {tr_loss:.4f}  valid: {va_loss:.4f}")
+    wandb.save('transformer.pt')
 
     print("\n----------sampling----------")
     print(model.sample(500))
