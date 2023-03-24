@@ -245,16 +245,16 @@ def save(model, config, path):
 
 if __name__ == "__main__":
     # model config
-    block_size = 32
-    emb_size = 64
+    block_size = 512
+    emb_size = 256
     head_size = 64
-    head_num = emb_size // 64
-    layer_num = 2
-    dropout = 0
+    head_num = emb_size // head_size
+    layer_num = 6
+    dropout = 0.2
 
     # training config
-    epoch = 1
-    eval_interval = 500
+    epoch = 10
+    eval_interval = 200
     eval_size = 500
     batch_size = 32
 
