@@ -1,3 +1,4 @@
 .ipynb_checkpoints
 transformer.pt
 wandb
+**/__pycache__
