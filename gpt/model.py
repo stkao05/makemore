@@ -110,6 +110,7 @@ class Transformer(nn.Module):
         super().__init__()
         self.config = c
         self.embed = nn.Embedding(c.vocab_size, c.emb_size)
+        self.dropout = nn.Dropout(c.dropout)
         self.blocks = nn.Sequential(
             *[Block(c) for _ in range(c.layer_num)]
         )
@@ -133,6 +134,7 @@ class Transformer(nn.Module):
     def forward(self, x):
         y = self.embed(x)  # (B, L, emb)
         y = y + self.pos_encoding(y)  # (B, L, emb)
+        y = self.dropout(y)
         y = self.blocks(y)  # (B, L, emb)
         y = self.proj(y)  # (B, L, vocab)
 
